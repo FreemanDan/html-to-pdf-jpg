@@ -17,16 +17,22 @@
    npm install
    ```
 
-3. Создайте файл .env в корневой директории проекта. Сначала необходимо сгенерировать SECRET_KEY и ETERNAL_TOKEN.
+3. Создайте файл .env в корневой директории проекта.
+   ```env
+    SECRET_KEY=<сгенерированный секретный ключ>
+    ETERNAL_TOKEN=<сгенерированный вечный токен>
+   ```
+   
+4.  Сначала необходимо сгенерировать SECRET_KEY и ETERNAL_TOKEN.
 
-4. Запустите скрипт generate_env.js:
+5. Запустите скрипт generate_env.js:
    ```sh
    npm run generate-env
    ```
 
-5. Скопируйте сгенерированный ETERNAL_TOKEN в переменную окружения ETERNAL_TOKEN.
-6. Скопируйте сгенерированный SECRET_KEY в переменную окружения SECRET_KEY.
-7. Запустите сервер:
+6. Скопируйте сгенерированный ETERNAL_TOKEN в переменную окружения ETERNAL_TOKEN.
+7. Скопируйте сгенерированный SECRET_KEY в переменную окружения SECRET_KEY.
+8. Запустите сервер:
    ```sh    
    npm start
    ```
@@ -44,7 +50,14 @@ POST /convert
   ```json
   {
     "url": "http://example.com",
-    "format": "pdf" // или "jpeg"
+    "format": "pdf"
+  }
+  ```
+  // или "jpeg"
+  ```json
+  {
+    "url": "http://example.com",
+    "format": "jpeg"
   }
   ```
 
