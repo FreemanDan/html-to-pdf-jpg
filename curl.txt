@@ -1,0 +1,4 @@
+curl -X POST http://localhost:3000/convert \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer <ETERNAL_TOKEN>" \
+     -d '{"url":"http://example.com", "format":"pdf"}'
