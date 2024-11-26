@@ -20,7 +20,7 @@ const convertToPdf = async (url) => {
     await page.goto(url, { waitUntil: 'networkidle2' });
     const timestamp = generateTimestamp();
     const outputFilePath = path.join(__dirname, '..', 'output', `converted_${timestamp}.pdf`);
-    await page.pdf({ path: outputFilePath, format: 'A4' });
+    await page.pdf({ path: outputFilePath, format: 'A4', printBackground: true });
     await browser.close();
     return outputFilePath;
 };

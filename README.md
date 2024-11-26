@@ -8,8 +8,8 @@
 
 1. Клонируйте репозиторий и перейдите в директорию проекта:
    ```sh
-   git clone https://github.com/your-username/puppeteer-test.git
-   cd puppeteer-test
+   git clone https://github.com/FreemanDan/html-to-pdf-jpg.git
+   cd html-to-pdf-jp
    ```
 
 2. Установите зависимости:
@@ -65,7 +65,7 @@ POST /convert
 - Успешный ответ (JSON):
 - ```json
   {
-    "url": "http://example.com/converted.pdf"
+    "url": "http://<host>/output/converted.pdf"
   }
   ```
 - Неудачный ответ (JSON):
