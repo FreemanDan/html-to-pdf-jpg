@@ -3,3 +3,12 @@ output/
 .env
 .history/
 .idea/
+.history/
+.vscode/
+.cursor/
+services.samoliot.ru.error.log.*
+services.samoliot.ru.access.log.*
+services.samoliot.ru.error.log
+services.samoliot.ru.access.log
+.DS_Store
+

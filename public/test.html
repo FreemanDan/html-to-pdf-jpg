@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convert and Send</title>
+</head>
+<body>
+<h1>Convert and Send Form</h1>
+<form id="convertForm">
+    <label for="urlInput">URL:</label>
+    <input type="text" id="urlInput" name="url" required>
+<br>
+    <label for="formatSelect">Format:</label>
+    <select id="formatSelect" name="format" required>
+        <option value="pdf">PDF</option>
+        <option value="jpeg">JPEG</option>
+        <!-- Добавьте другие форматы по необходимости -->
+    </select>
+    <br>
+    <label for="clip_to_element">Clip to Element id:</label>
+    <input type="text" id="clip_to_element" name="clip_to_element">
+    <br>
+    <label for="emulate_media_type">Emulate Media Type:</label>
+    <input type="text" id="emulate_media_type" name="emulate_media_type">
+    <br>
+    <label for="tokenInput">Token:</label>
+    <input type="text" id="tokenInput" name="token" required>
+    <br>
+    <button type="submit">Convert and Send</button>
+</form>
+<h2>API Description</h2>
+<p>The <code>/api/v1/convert-and-send</code> endpoint allows you to convert a document from a given URL to a specified format. The converted document will be returned as a downloadable file.</p>
+
+<h3>Request</h3>
+<p><strong>URL:</strong> <code>https://services.samoliot.ru/api/v1/convert-and-send</code></p>
+<p><strong>Method:</strong> <code>POST</code></p>
+<p><strong>Headers:</strong></p>
+<ul>
+    <li><code>Content-Type: application/json</code></li>
+    <li><code>Authorization: Bearer {token}</code></li>
+</ul>
+<p><strong>Body:</strong></p>
+<pre><code>{
+    "url": "http://example.com/document",
+    "format": "pdf",
+    "clip_to_element": "element_id (optional)",
+    "emulate_media_type": "emulate_media_type (optional)"
+}</code></pre>
+
+<h3>Response</h3>
+<p><strong>Status Code:</strong> <code>200 OK</code></p>
+<p><strong>Headers:</strong></p>
+<ul>
+    <li><code>Content-Disposition: attachment; filename="converted_file.pdf"</code></li>
+    <li><code>Content-Type: application/pdf</code></li>
+</ul>
+<p><strong>Body:</strong> The converted file in the specified format.</p>
+
+<script>
+function setCookie(name, value, days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "expires=" + date.toUTCString();
+    document.cookie = name + "=" + encodeURIComponent(value) + ";" + expires + ";path=/";
+}
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+
+function saveFormDataToCookies() {
+    const url = document.getElementById('urlInput').value;
+    const format = document.getElementById('formatSelect').value;
+    const token = document.getElementById('tokenInput').value;
+    const clip_to_element = document.getElementById('clip_to_element').value;
+    const emulate_media_type = document.getElementById('emulate_media_type').value;
+
+    setCookie('url', url, 7);
+    setCookie('format', format, 7);
+    setCookie('token', token, 7);
+    setCookie('clip_to_element', clip_to_element, 7);
+    setCookie('emulate_media_type', emulate_media_type, 7);
+}
+
+function loadFormDataFromCookies() {
+    const url = getCookie('url');
+    const format = getCookie('format');
+    const token = getCookie('token');
+    const clip_to_element = getCookie('clip_to_element');
+    const emulate_media_type = getCookie('emulate_media_type');
+
+    if (url) document.getElementById('urlInput').value = decodeURIComponent(url);
+    if (format) document.getElementById('formatSelect').value = decodeURIComponent(format);
+    if (token) document.getElementById('tokenInput').value = decodeURIComponent(token);
+    if (clip_to_element) document.getElementById('clip_to_element').value = decodeURIComponent(clip_to_element);
+    if (emulate_media_type) document.getElementById('emulate_media_type').value = decodeURIComponent(emulate_media_type);
+}
+
+function setTokenInForm() {
+    document.getElementById('convertForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const token = formData.get('token'); // Получение токена из формы
+
+        fetch('https://services.samoliot.ru/api/v1/convert-and-send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                url: formData.get('url'),
+                format: formData.get('format'),
+                clip_to_element: formData.get('clip_to_element'),
+                emulate_media_type: formData.get('emulate_media_type')
+                
+            })
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `converted_file.${formData.get('format')}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error:', error));
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadFormDataFromCookies();
+    setTokenInForm();
+    document.getElementById('convertForm').addEventListener('submit', saveFormDataToCookies);
+});
+</script>
+
+</body>
+</html>

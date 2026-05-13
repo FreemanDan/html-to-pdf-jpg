@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convert and Send</title>
+</head>
+<body>
+
+<form id="convertForm">
+    <label for="urlInput">URL:</label>
+    <input type="text" id="urlInput" name="url" required>
+
+    <label for="formatSelect">Format:</label>
+    <select id="formatSelect" name="format" required>
+        <option value="pdf">PDF</option>
+        <option value="docx">DOCX</option>
+        <!-- Добавьте другие форматы по необходимости -->
+    </select>
+
+    <label for="clip_to_element">Clip to Element id:</label>
+    <input type="text" id="clip_to_element" name="clip_to_element">
+
+    <label for="tokenInput">Token:</label>
+    <input type="text" id="tokenInput" name="token" required>
+
+    <button type="submit">Convert and Send</button>
+</form>
+
+<script>
+function setCookie(name, value, days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "expires=" + date.toUTCString();
+    document.cookie = name + "=" + encodeURIComponent(value) + ";" + expires + ";path=/";
+}
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+
+function saveFormDataToCookies() {
+    const url = document.getElementById('urlInput').value;
+    const format = document.getElementById('formatSelect').value;
+    const token = document.getElementById('tokenInput').value;
+    const clip_to_element = document.getElementById('clip_to_element').value;
+
+    setCookie('url', url, 7);
+    setCookie('format', format, 7);
+    setCookie('token', token, 7);
+    setCookie('clip_to_element', clip_to_element, 7);
+}
+
+function loadFormDataFromCookies() {
+    const url = getCookie('url');
+    const format = getCookie('format');
+    const token = getCookie('token');
+    const clip_to_element = getCookie('clip_to_element');
+
+    if (url) document.getElementById('urlInput').value = decodeURIComponent(url);
+    if (format) document.getElementById('formatSelect').value = decodeURIComponent(format);
+    if (token) document.getElementById('tokenInput').value = decodeURIComponent(token);
+    if (clip_to_element) document.getElementById('clip_to_element').value = decodeURIComponent(clip_to_element);
+}
+
+function setTokenInForm() {
+    document.getElementById('convertForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const token = formData.get('token'); // Получение токена из формы
+
+        fetch('https://services.samoliot.ru/api/v1/convert-and-send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                url: formData.get('url'),
+                format: formData.get('format'),
+                clip_to_element: formData.get('clip_to_element')
+            })
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `converted_file.${formData.get('format')}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error:', error));
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadFormDataFromCookies();
+    setTokenInForm();
+    document.getElementById('convertForm').addEventListener('submit', saveFormDataToCookies);
+});
+</script>
+
+</body>
+</html>

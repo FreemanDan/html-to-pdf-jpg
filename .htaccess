@@ -1,0 +1,6 @@
+PassengerNodejs /home/s/samolivq/.local/bin/node
+PassengerAppRoot /home/s/samolivq/services.samoliot.ru
+PassengerAppType node
+PassengerStartupFile src/server.js
+
+# PassengerLogFile /home/s/samolivq/services.samoliot.ru/passenger.log
