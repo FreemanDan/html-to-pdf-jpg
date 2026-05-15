@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
-const { convertToPdf, convertToJpeg } = require('./converter');
+const { convertToPdf, convertToJpeg, CaptureError } = require('./converter');
 const path = require('path');
 
 require('dotenv').config();
@@ -61,22 +61,60 @@ app.get('/', (req, res) => {
 // Метод для сохранения сгенерированных файлов и возврата URL
 apiRouter.post('/convert', authenticateToken, async (req, res) => {
     const { url, format, clip_to_element = null, emulate_media_type = null } = req.body;
-
-    let convertFunction;
-    if (format === 'pdf') {
-        convertFunction = convertToPdf;
-    } else if (format === 'jpeg') {
-        convertFunction = convertToJpeg;
+    const captureReadyMode = isCaptureReadyMode(req);
+    const conversionOptions = buildConversionOptions(req);
+    if (captureReadyMode) {
+        const validationError = validateCaptureReadyRequest({ url, format });
+        if (validationError) {
+            console.error('Convert validation failed:', validationError.code);
+            return res.status(validationError.statusCode).json({
+                error: validationError.code,
+                message: validationError.message,
+                meta: { request_id: conversionOptions.requestId },
+            });
+        }
     } else {
-        console.error('Unsupported format:', format);
-        return res.status(400).send('Unsupported format: ' + format + '.');
+        if (format !== 'pdf' && format !== 'jpeg') {
+            console.error('Unsupported format:', format);
+            return res.status(400).send('Unsupported format: ' + format + '.');
+        }
     }
 
+    const convertFunction = format === 'pdf' ? convertToPdf : convertToJpeg;
+
+    console.log('[convert] start', {
+        request_id: conversionOptions.requestId,
+        mode: captureReadyMode ? 'capture_ready' : 'legacy',
+        format,
+        has_clip_to_element: Boolean(clip_to_element),
+    });
+
     try {
-        const outputUrl = await convertFunction(url, false, clip_to_element, emulate_media_type);
+        const outputUrl = await convertFunction(
+            url,
+            false,
+            clip_to_element,
+            emulate_media_type,
+            conversionOptions
+        );
+        console.log('[convert] success', {
+            request_id: conversionOptions.requestId,
+            mode: captureReadyMode ? 'capture_ready' : 'legacy',
+        });
         res.json({ url: outputUrl });
     } catch (err) {
-        console.error('Conversion failed:', err);
+        console.error('[convert] failed:', {
+            request_id: conversionOptions.requestId,
+            mode: captureReadyMode ? 'capture_ready' : 'legacy',
+            error_code: err && err.code ? err.code : null,
+            message: err && err.message ? err.message : String(err),
+        });
+
+        if (captureReadyMode) {
+            const structuredError = toStructuredError(err, req, 'Conversion failed');
+            return res.status(structuredError.statusCode).json(structuredError.body);
+        }
+
         res.status(500).send('Conversion failed. error: ' + err);
     }
 });
@@ -84,19 +122,42 @@ apiRouter.post('/convert', authenticateToken, async (req, res) => {
 // Метод для конвертации и немедленной отправки файла
 apiRouter.post('/convert-and-send', authenticateToken, async (req, res) => {
     const { url, format, clip_to_element = null, emulate_media_type = null } = req.body;
-
-    let convertFunction;
-    if (format === 'pdf') {
-        convertFunction = convertToPdf;
-    } else if (format === 'jpeg') {
-        convertFunction = convertToJpeg;
+    const captureReadyMode = isCaptureReadyMode(req);
+    const conversionOptions = buildConversionOptions(req);
+    if (captureReadyMode) {
+        const validationError = validateCaptureReadyRequest({ url, format });
+        if (validationError) {
+            console.error('Convert-and-send validation failed:', validationError.code);
+            return res.status(validationError.statusCode).json({
+                error: validationError.code,
+                message: validationError.message,
+                meta: { request_id: conversionOptions.requestId },
+            });
+        }
     } else {
-        console.error('Unsupported format:', format);
-        return res.status(400).send('Unsupported format.');
+        if (format !== 'pdf' && format !== 'jpeg') {
+            console.error('Unsupported format:', format);
+            return res.status(400).send('Unsupported format.');
+        }
     }
 
+    const convertFunction = format === 'pdf' ? convertToPdf : convertToJpeg;
+
+    console.log('[convert-and-send] start', {
+        request_id: conversionOptions.requestId,
+        mode: captureReadyMode ? 'capture_ready' : 'legacy',
+        format,
+        has_clip_to_element: Boolean(clip_to_element),
+    });
+
     try {
-        const { buffer, filename } = await convertFunction(url, true, clip_to_element, emulate_media_type); // Передаем true, чтобы получить буфер
+        const { buffer, filename } = await convertFunction(
+            url,
+            true,
+            clip_to_element,
+            emulate_media_type,
+            conversionOptions
+        );
         const contentType = format === 'pdf' ? 'application/pdf' : 'image/jpeg';
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
@@ -109,12 +170,79 @@ apiRouter.post('/convert-and-send', authenticateToken, async (req, res) => {
 
         res.send(buffer);
     } catch (err) {
-        console.error('Conversion failed:', err);
+        console.error('[convert-and-send] failed:', {
+            request_id: conversionOptions.requestId,
+            mode: captureReadyMode ? 'capture_ready' : 'legacy',
+            error_code: err && err.code ? err.code : null,
+            message: err && err.message ? err.message : String(err),
+        });
+
+        if (captureReadyMode) {
+            const structuredError = toStructuredError(err, req, 'Conversion and send failed');
+            return res.status(structuredError.statusCode).json(structuredError.body);
+        }
+
         res.status(500).send('Conversion failed. error: ' + err);
     }
 });
 
 app.use('/api/v1', apiRouter);
+
+const getRequestId = (req) => {
+    return req.headers['x-request-id'] || req.headers['x-correlation-id'] || null;
+};
+
+const isCaptureReadyMode = (req) => {
+    return req.body && req.body.wait_for_capture_ready === true;
+};
+
+const buildConversionOptions = (req) => {
+    return {
+        waitForCaptureReady: isCaptureReadyMode(req),
+        requestId: getRequestId(req),
+    };
+};
+
+const validateCaptureReadyRequest = ({ url, format }) => {
+    if (!url) {
+        return { code: 'missing_url', message: 'Field "url" is required', statusCode: 400 };
+    }
+
+    if (format !== 'pdf' && format !== 'jpeg') {
+        return {
+            code: 'unsupported_format',
+            message: `Unsupported format: ${format}. Allowed values: pdf, jpeg`,
+            statusCode: 400,
+        };
+    }
+
+    return null;
+};
+
+const toStructuredError = (error, req, fallbackMessage) => {
+    const requestId = getRequestId(req);
+    const defaultMeta = { request_id: requestId };
+
+    if (error instanceof CaptureError) {
+        return {
+            statusCode: error.statusCode || 500,
+            body: {
+                error: error.code || 'conversion_failed',
+                message: error.message || fallbackMessage,
+                meta: { ...defaultMeta, ...(error.meta || {}) },
+            },
+        };
+    }
+
+    return {
+        statusCode: 500,
+        body: {
+            error: 'conversion_failed',
+            message: fallbackMessage,
+            meta: defaultMeta,
+        },
+    };
+};
 
 const PORT = process.env.PORT || 3000; // PORT задается Passenger
 app.listen(PORT, () => {
