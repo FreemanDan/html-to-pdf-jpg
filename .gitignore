@@ -1,6 +1,6 @@
 node_modules/
-output/
-.env
+logs/
+
 .history/
 .idea/
 .history/
@@ -11,4 +11,9 @@ services.samoliot.ru.access.log.*
 services.samoliot.ru.error.log
 services.samoliot.ru.access.log
 .DS_Store
+storage/*.sqlite
+storage/*.sqlite-shm
+storage/*.sqlite-wal
+storage/jobs/*.json
+storage/jobs/.claim-*.lock
 

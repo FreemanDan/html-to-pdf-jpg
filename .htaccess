@@ -3,4 +3,5 @@ PassengerAppRoot /home/s/samolivq/services.samoliot.ru
 PassengerAppType node
 PassengerStartupFile src/server.js
 
-# PassengerLogFile /home/s/samolivq/services.samoliot.ru/passenger.log
+# PassengerLogFile в .htaccess на части хостингов (Beget и др.) даёт [alert] Invalid command → Apache 500.
+# Логи Passenger смотреть в панели хостинга / общий error_log домена.

@@ -1,10 +1,14 @@
+require('dotenv').config();
+require('./lib/fileLogSetup').installFileLogging();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 const { convertToPdf, convertToJpeg, CaptureError } = require('./converter');
+const { jobsRouter } = require('./routes/jobs');
+const { scheduleJobWorker } = require('./jobs');
 const path = require('path');
-
-require('dotenv').config();
+const { filesystemPathToPublicUrl } = require('./lib/outputPublicUrl');
 
 const app = express();
 const port = 3000;
@@ -16,7 +20,7 @@ const eternalToken = process.env.ETERNAL_TOKEN; // Вечный токен из 
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*'); // Замените '*' на домен вашего клиента для большей безопасности
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Correlation-Id');
     next();
 });
 
@@ -27,6 +31,14 @@ app.options('*', (req, res) => {
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public'))); // Настройка для обслуживания статических файлов
+// Снимки и PDF для Telegram (sendDocument URL) — публичный путь /output/... при наличии OUTPUT_PUBLIC_BASE_URL
+app.use(
+    '/output',
+    express.static(path.join(__dirname, '..', 'output'), {
+        fallthrough: false,
+        index: false,
+    })
+);
 
 // Настройка маршрутов для API под /api/v1
 const apiRouter = express.Router();
@@ -63,6 +75,14 @@ apiRouter.post('/convert', authenticateToken, async (req, res) => {
     const { url, format, clip_to_element = null, emulate_media_type = null } = req.body;
     const captureReadyMode = isCaptureReadyMode(req);
     const conversionOptions = buildConversionOptions(req);
+    const viewportError = validateViewportRequest(req.body);
+    if (viewportError) {
+        return res.status(viewportError.statusCode).json({
+            error: viewportError.code,
+            message: viewportError.message,
+            meta: { request_id: conversionOptions.requestId },
+        });
+    }
     if (captureReadyMode) {
         const validationError = validateCaptureReadyRequest({ url, format });
         if (validationError) {
@@ -87,6 +107,7 @@ apiRouter.post('/convert', authenticateToken, async (req, res) => {
         mode: captureReadyMode ? 'capture_ready' : 'legacy',
         format,
         has_clip_to_element: Boolean(clip_to_element),
+        viewport: conversionOptions.viewport,
     });
 
     try {
@@ -101,7 +122,7 @@ apiRouter.post('/convert', authenticateToken, async (req, res) => {
             request_id: conversionOptions.requestId,
             mode: captureReadyMode ? 'capture_ready' : 'legacy',
         });
-        res.json({ url: outputUrl });
+        res.json({ url: filesystemPathToPublicUrl(outputUrl) });
     } catch (err) {
         console.error('[convert] failed:', {
             request_id: conversionOptions.requestId,
@@ -124,6 +145,14 @@ apiRouter.post('/convert-and-send', authenticateToken, async (req, res) => {
     const { url, format, clip_to_element = null, emulate_media_type = null } = req.body;
     const captureReadyMode = isCaptureReadyMode(req);
     const conversionOptions = buildConversionOptions(req);
+    const viewportError = validateViewportRequest(req.body);
+    if (viewportError) {
+        return res.status(viewportError.statusCode).json({
+            error: viewportError.code,
+            message: viewportError.message,
+            meta: { request_id: conversionOptions.requestId },
+        });
+    }
     if (captureReadyMode) {
         const validationError = validateCaptureReadyRequest({ url, format });
         if (validationError) {
@@ -148,6 +177,7 @@ apiRouter.post('/convert-and-send', authenticateToken, async (req, res) => {
         mode: captureReadyMode ? 'capture_ready' : 'legacy',
         format,
         has_clip_to_element: Boolean(clip_to_element),
+        viewport: conversionOptions.viewport,
     });
 
     try {
@@ -186,10 +216,50 @@ apiRouter.post('/convert-and-send', authenticateToken, async (req, res) => {
     }
 });
 
+// Async-job: постановка в очередь (шаг 3 — без запуска Puppeteer; воркер — шаг 4)
+apiRouter.use('/jobs', authenticateToken, jobsRouter);
+
 app.use('/api/v1', apiRouter);
 
 const getRequestId = (req) => {
     return req.headers['x-request-id'] || req.headers['x-correlation-id'] || null;
+};
+
+const parsePositiveInteger = (value) => {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const buildViewportOptions = (body) => {
+    if (!body || (body.viewport_width == null && body.viewport_height == null)) {
+        return null;
+    }
+
+    const width = parsePositiveInteger(body.viewport_width);
+    const height = parsePositiveInteger(body.viewport_height);
+    if (!width || !height) {
+        return null;
+    }
+
+    return { width, height };
+};
+
+const validateViewportRequest = (body) => {
+    if (!body || (body.viewport_width == null && body.viewport_height == null)) {
+        return null;
+    }
+
+    const width = parsePositiveInteger(body.viewport_width);
+    const height = parsePositiveInteger(body.viewport_height);
+    if (!width || !height) {
+        return {
+            code: 'invalid_viewport',
+            message: 'Fields "viewport_width" and "viewport_height" must be positive integers and must be passed together',
+            statusCode: 400,
+        };
+    }
+
+    return null;
 };
 
 const isCaptureReadyMode = (req) => {
@@ -200,6 +270,7 @@ const buildConversionOptions = (req) => {
     return {
         waitForCaptureReady: isCaptureReadyMode(req),
         requestId: getRequestId(req),
+        viewport: buildViewportOptions(req.body),
     };
 };
 
@@ -248,4 +319,6 @@ const PORT = process.env.PORT || 3000; // PORT задается Passenger
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Use this token for API requests: ${eternalToken}`);
+    // Подхватить queued job после старта (файлы на диске переживают рестарт процесса; in-memory store — нет)
+    scheduleJobWorker();
 });
