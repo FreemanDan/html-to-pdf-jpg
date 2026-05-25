@@ -25,6 +25,13 @@ class CaptureError extends Error {
 
 const isPositiveNumber = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0;
 
+const TABLE_CAPTURE_SURFACE_SELECTORS = [
+    '[data-capture-surface="city-daily-table-day-results"]',
+    '[data-capture-surface="city-daily-table-month-dynamics"]',
+];
+
+const TABLE_CAPTURE_SURFACE_SELECTOR = TABLE_CAPTURE_SURFACE_SELECTORS.join(', ');
+
 /**
  * Опциональный колбэк для async-job: обновление технической stage в jobStore.
  * @param {Object} options
@@ -88,6 +95,106 @@ const withSafeMetaUrl = (url) => {
         return `${parsed.origin}${parsed.pathname}`;
     } catch (error) {
         return '';
+    }
+};
+
+const buildScopedCaptureSurfaceSelector = (widgetSelector) => {
+    return TABLE_CAPTURE_SURFACE_SELECTORS.map((surfaceSelector) => `${widgetSelector} ${surfaceSelector}`).join(', ');
+};
+
+const waitForNextLayoutFrame = async (page) => {
+    await page.evaluate(() => new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        });
+    }));
+};
+
+/**
+ * Для табличных виджетов раскрывает overflow цепочки от capture-surface до оболочки `widget-*`,
+ * чтобы `boundingBox()` видел полный размер таблицы, а не только видимую область dashboard grid.
+ *
+ * @param {import('puppeteer').Page} page
+ * @param {string} widgetSelector
+ * @returns {Promise<{ captureSurface: string|null, touchedCount: number }|null>}
+ */
+const revealCaptureSurfaceOverflow = async (page, widgetSelector) => {
+    return page.evaluate((selector, surfaceSelector) => {
+        const widget = document.querySelector(selector);
+        if (!widget) {
+            return null;
+        }
+
+        const surface = widget.querySelector(surfaceSelector);
+        if (!surface) {
+            return null;
+        }
+
+        let touchedCount = 0;
+        let node = surface;
+        while (node && node !== document.body && node !== document.documentElement) {
+            node.style.setProperty('overflow', 'visible', 'important');
+            node.style.setProperty('overflow-x', 'visible', 'important');
+            node.style.setProperty('overflow-y', 'visible', 'important');
+            node.style.setProperty('max-width', 'none', 'important');
+            touchedCount += 1;
+
+            if (node === widget) {
+                break;
+            }
+            node = node.parentElement;
+        }
+
+        surface.style.setProperty('display', 'inline-block', 'important');
+        surface.style.setProperty('width', 'max-content', 'important');
+        surface.style.setProperty('max-width', 'none', 'important');
+
+        surface
+            .querySelectorAll('.table-day-results__scroll, .table-month-dynamics__scroll')
+            .forEach((scrollNode) => {
+                scrollNode.style.setProperty('overflow', 'visible', 'important');
+                scrollNode.style.setProperty('overflow-x', 'visible', 'important');
+                scrollNode.style.setProperty('overflow-y', 'visible', 'important');
+                scrollNode.style.setProperty('width', 'max-content', 'important');
+                scrollNode.style.setProperty('max-width', 'none', 'important');
+            });
+
+        return {
+            captureSurface: surface.getAttribute('data-capture-surface'),
+            touchedCount,
+        };
+    }, widgetSelector, TABLE_CAPTURE_SURFACE_SELECTOR);
+};
+
+/**
+ * Ждёт стабилизацию размера элемента после раскрытия overflow и финального layout.
+ *
+ * @param {import('puppeteer').Page} page
+ * @param {import('puppeteer').ElementHandle<Element>} elementHandle
+ * @returns {Promise<void>}
+ */
+const waitForStableElementBox = async (page, elementHandle) => {
+    let previous = null;
+
+    for (let i = 0; i < 5; i++) {
+        const current = await elementHandle.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+                width: rect.width,
+                height: rect.height,
+            };
+        });
+
+        if (
+            previous &&
+            Math.abs(previous.width - current.width) < 1 &&
+            Math.abs(previous.height - current.height) < 1
+        ) {
+            return;
+        }
+
+        previous = current;
+        await waitForNextLayoutFrame(page);
     }
 };
 
@@ -212,7 +319,7 @@ const resolveClipParameters = async (page, clipToElement, waitForCaptureReady, r
         }
     }
 
-    const element = await page.$(selector);
+    let element = await page.$(selector);
     if (!element) {
         throw new CaptureError(
             'widget_not_found',
@@ -220,6 +327,27 @@ const resolveClipParameters = async (page, clipToElement, waitForCaptureReady, r
             { ...requestMeta, selector },
             422
         );
+    }
+
+    let effectiveSelector = selector;
+    let captureSurfaceMeta = null;
+    if (String(clipToElement).startsWith('widget-')) {
+        captureSurfaceMeta = await revealCaptureSurfaceOverflow(page, selector);
+        if (captureSurfaceMeta) {
+            const scopedCaptureSurfaceSelector = buildScopedCaptureSurfaceSelector(selector);
+            const captureSurfaceElement = await page.$(scopedCaptureSurfaceSelector);
+            if (captureSurfaceElement) {
+                element = captureSurfaceElement;
+                effectiveSelector = scopedCaptureSurfaceSelector;
+                await waitForStableElementBox(page, element);
+                console.log('[converter] using inner capture surface for widget clip', {
+                    selector,
+                    capture_surface: captureSurfaceMeta.captureSurface,
+                    touched_count: captureSurfaceMeta.touchedCount,
+                    request_id: requestMeta.request_id,
+                });
+            }
+        }
     }
 
     const boundingBox = await element.boundingBox();
@@ -230,8 +358,8 @@ const resolveClipParameters = async (page, clipToElement, waitForCaptureReady, r
     ) {
         throw new CaptureError(
             'widget_not_rendered',
-            `Widget element is not rendered and has invalid bounding box: ${selector}`,
-            { ...requestMeta, selector },
+            `Widget element is not rendered and has invalid bounding box: ${effectiveSelector}`,
+            { ...requestMeta, selector: effectiveSelector },
             422
         );
     }
