@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./lib/puppeteerEnv');
 require('./lib/fileLogSetup').installFileLogging();
 
 const express = require('express');

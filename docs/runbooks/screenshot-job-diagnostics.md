@@ -11,7 +11,36 @@
 | `dashboard_not_ready` | Таймаут `__CAPTURE_READY__`; лог `[converter]` |
 | `job_stale_running` | Процесс упал или capture дольше `JOBS_STALE_RUNNING_AFTER_MS` |
 | `job_execute_timeout` | Превышен `JOBS_EXECUTE_TIMEOUT_MS` |
+| `conversion_failed` | Прочая ошибка Puppeteer |
+| `chrome_not_installed` | Нет бинарника Chrome — см. раздел «Chrome / кэш браузера» |
 | Telegram не скачивает файл | `OUTPUT_PUBLIC_BASE_URL`, доступность `/output/…` по HTTPS |
+
+## Chrome / кэш браузера
+
+Симптом:
+
+```text
+(conversion_failed) Could not find Chrome (ver. …)
+cache path: …/storage/puppeteer-browsers
+```
+
+или код **`chrome_not_installed`**.
+
+Причина: удалён каталог с бинарником (`storage/puppeteer-browsers` или старый `.cache/puppeteer`), либо после деплоя не выполнялся `npm install` / `npm run install:chrome`.
+
+Восстановление на сервере:
+
+```bash
+cd ~/services.samoliot.ru   # корень приложения
+npm run install:chrome
+touch tmp/restart.txt
+```
+
+Профилактика:
+
+- **Не удалять** `storage/puppeteer-browsers/` при «очистке» сервера.
+- После `git pull` / деплоя выполнять **`npm install`** (postinstall ставит Chrome, если его нет).
+- Опционально зафиксировать путь: `PUPPETEER_CACHE_DIR` в `.env`.
 
 ## Проверки
 

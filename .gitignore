@@ -16,4 +16,6 @@ storage/*.sqlite-shm
 storage/*.sqlite-wal
 storage/jobs/*.json
 storage/jobs/.claim-*.lock
+storage/puppeteer-browsers/
+.cache/
 

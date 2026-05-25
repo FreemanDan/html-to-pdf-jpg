@@ -24,6 +24,18 @@
 npm install
 ```
 
+`npm install` автоматически вызывает **`postinstall`** → **`npm run install:chrome`**: скачивает Chrome для Puppeteer в каталог **`storage/puppeteer-browsers`** (или в `PUPPETEER_CACHE_DIR`, если задан в `.env`).
+
+**Не удаляйте** каталог `storage/puppeteer-browsers/` — это бинарник Chromium для скриншотов. Старый путь `.cache/puppeteer` больше не используется по умолчанию.
+
+Если Chrome пропал (ошибка `chrome_not_installed` / `Could not find Chrome`), восстановление на сервере:
+
+```bash
+cd /home/s/samolivq/services.samoliot.ru
+npm run install:chrome
+touch tmp/restart.txt
+```
+
 Создайте `.env` в корне проекта:
 
 ```env
@@ -44,6 +56,11 @@ PUPPETEER_SELECTOR_TIMEOUT_MS=45000
 PUPPETEER_CAPTURE_READY_STABILIZATION_MS=5000
 # Временно: при таймауте __CAPTURE_READY__ (ошибка dashboard_not_ready) пишет HTML + PNG в output/debug_ready_timeout/
 # PUPPETEER_DEBUG_SAVE_ON_READY_TIMEOUT=1
+
+# Каталог бинарника Chrome (по умолчанию: storage/puppeteer-browsers от корня приложения)
+# PUPPETEER_CACHE_DIR=/home/s/samolivq/services.samoliot.ru/storage/puppeteer-browsers
+# Альтернатива: системный Chromium (если установлен на хостинге)
+# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Логи приложения в файл (см. раздел «Логирование в файл»)
 # LOG_TO_FILE=1
@@ -308,6 +325,7 @@ Job не найден — HTTP **`404`**:
 - `widget_not_found` — элемент по `clip_to_element` не найден.
 - `widget_not_rendered` — элемент найден, но без валидного `boundingBox`.
 - `conversion_failed` — прочая нераспознанная ошибка.
+- `chrome_not_installed` — бинарник Chrome для Puppeteer отсутствует (удалён `storage/puppeteer-browsers` или не выполнен `npm run install:chrome` после деплоя).
 - `job_not_found` — GET `/api/v1/jobs/:jobId` для неизвестного `job_id` или после purge.
 - `job_read_failed` — повреждён или непрочитываемый JSON-файл job на диске; ответ **`200`** с телом ошибки (**не** падение приложения).
 - `job_execute_timeout` — превышен **`JOBS_EXECUTE_TIMEOUT_MS`** на одну конвертацию.

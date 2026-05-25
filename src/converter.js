@@ -1,3 +1,4 @@
+const { getPuppeteerCacheDir, getPuppeteerLaunchOptions } = require('./lib/puppeteerEnv');
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
@@ -32,6 +33,32 @@ const isPositiveNumber = (value) => typeof value === 'number' && Number.isFinite
 const notifyStage = (options, stage) => {
     if (options && typeof options.onStage === 'function') {
         options.onStage(stage);
+    }
+};
+
+/**
+ * Запуск Chromium с понятной ошибкой, если бинарник не установлен (удалён `.cache` / `storage/puppeteer-browsers`).
+ *
+ * @returns {Promise<import('puppeteer').Browser>}
+ */
+const launchBrowser = async () => {
+    try {
+        return await puppeteer.launch(getPuppeteerLaunchOptions());
+    } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        if (/Could not find Chrome|Could not find browser/i.test(message)) {
+            const cacheDir = getPuppeteerCacheDir();
+            throw new CaptureError(
+                'chrome_not_installed',
+                'Chrome for Puppeteer is not installed. Run: npm run install:chrome',
+                {
+                    cache_dir: cacheDir,
+                    recovery_command: 'npm run install:chrome',
+                },
+                503,
+            );
+        }
+        throw error;
     }
 };
 
@@ -289,9 +316,7 @@ const convertToPdf = async (
     options = {}
 ) => {
     notifyStage(options, 'launching_browser');
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     await applyCaptureViewport(page, options);
 
@@ -334,9 +359,7 @@ const convertToJpeg = async (
     options = {}
 ) => {
     notifyStage(options, 'launching_browser');
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     await applyCaptureViewport(page, options);
 

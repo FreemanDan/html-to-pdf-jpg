@@ -133,6 +133,10 @@ OUTPUT_PUBLIC_BASE_URL=https://services.samoliot.ru
 | `PUPPETEER_CAPTURE_READY_TIMEOUT_MS` | 180000 | Ожидание `__CAPTURE_READY__` |
 | `PUPPETEER_SELECTOR_TIMEOUT_MS` | 45000 | waitForSelector виджета |
 | `PUPPETEER_CAPTURE_READY_STABILIZATION_MS` | 5000 | Пауза после ready перед снимком |
+| `PUPPETEER_CACHE_DIR` | `storage/puppeteer-browsers` | Каталог бинарника Chrome; не удалять на сервере |
+| `PUPPETEER_EXECUTABLE_PATH` | — | Системный Chromium вместо bundled (опционально) |
+
+После деплоя или удаления каталога кэша: `npm run install:chrome` (также вызывается из `postinstall` при `npm install`).
 
 ### Job store
 

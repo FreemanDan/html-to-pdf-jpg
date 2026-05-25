@@ -4,7 +4,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "generate-env": "node generate_env.js"
+    "generate-env": "node generate_env.js",
+    "install:chrome": "node scripts/install-chrome.js",
+    "postinstall": "node scripts/install-chrome.js"
   },
   "keywords": [],
   "author": "",
